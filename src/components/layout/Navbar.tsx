@@ -10,6 +10,7 @@ const navItems = [
   { label: "Gamificación", href: "#gamificacion" },
   { label: "Trazabilidad", href: "#trazabilidad" },
   { label: "Impacto", href: "#impacto" },
+  { label: "♻️ Centros de acopio", href: "#centros" },
 ];
 
 const Navbar = () => {
