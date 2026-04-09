@@ -1,96 +1,17 @@
-import { useEffect, useCallback, useRef } from "react";
 import { Link } from "react-router-dom";
-import { useAuth } from "@/contexts/AuthContext";
-import { supabase } from "@/integrations/supabase/client";
-import { toast } from "sonner";
-import { useState } from "react";
 import {
-  Recycle, Star, Flame, Leaf, Package,
-  Milk, Newspaper, Wine, Cpu, ArrowLeft, Scale,
-  MapPin, Clock, TrendingUp,
-  Trophy, Award, Sprout, Zap, Target, QrCode,
+  Recycle, Star, Flame, Leaf,
+  Scale, MapPin, Clock, TrendingUp,
+  Trophy, ArrowLeft, QrCode,
 } from "lucide-react";
 import ecoLogo from "@/assets/eco-logo.png";
-
-// ─── Materiales ───────────────────────────────────────────────────────────────
-const MATERIALS = [
-  { id: "plastico",    name: "Plástico",      icon: Milk,      color: "bg-eco-sky",   pts_per_kg: 20 },
-  { id: "papel",       name: "Papel / Cartón", icon: Newspaper, color: "bg-eco-warm",  pts_per_kg: 10 },
-  { id: "vidrio",      name: "Vidrio",         icon: Wine,      color: "bg-primary",   pts_per_kg: 15 },
-  { id: "metal",       name: "Metal",          icon: Package,   color: "bg-eco-earth", pts_per_kg: 25 },
-  { id: "electronico", name: "Electrónicos",   icon: Cpu,       color: "bg-accent",    pts_per_kg: 30 },
-];
-
-// ─── Helper barra de progreso ─────────────────────────────────────────────────
-const pctClass = (p: number) => {
-  if (p <= 0)  return "w-0";
-  if (p <= 5)  return "w-[5%]";
-  if (p <= 10) return "w-[10%]";
-  if (p <= 15) return "w-[15%]";
-  if (p <= 20) return "w-1/5";
-  if (p <= 25) return "w-1/4";
-  if (p <= 30) return "w-[30%]";
-  if (p <= 33) return "w-1/3";
-  if (p <= 40) return "w-2/5";
-  if (p <= 45) return "w-[45%]";
-  if (p <= 50) return "w-1/2";
-  if (p <= 55) return "w-[55%]";
-  if (p <= 60) return "w-3/5";
-  if (p <= 66) return "w-2/3";
-  if (p <= 70) return "w-[70%]";
-  if (p <= 75) return "w-3/4";
-  if (p <= 80) return "w-4/5";
-  if (p <= 85) return "w-[85%]";
-  if (p <= 90) return "w-[90%]";
-  if (p <= 95) return "w-[95%]";
-  return "w-full";
-};
-
-// ─── Misiones ─────────────────────────────────────────────────────────────────
-interface Mission {
-  id: string;
-  title: string;
-  desc: string;
-  bonus: number;
-  icon: React.ComponentType<{ size?: number; className?: string }>;
-  check: (logs: { material: string; quantity_kg: number }[], totalKg: number, streak: number, points: number) => boolean;
-  currentVal: (logs: { material: string; quantity_kg: number }[], totalKg: number, streak: number, points: number) => number;
-  total: number;
-}
-
-const MISSIONS: Mission[] = [
-  { id: "first_log",     title: "Primer paso",          desc: "Registra tu primer reciclaje",            bonus: 50,  icon: Sprout,  check: (l) => l.length >= 1,                                       currentVal: (l) => Math.min(l.length, 1),                                  total: 1    },
-  { id: "logs_5",        title: "Reciclador activo",    desc: "Registra 5 reciclajes",                   bonus: 100, icon: Recycle, check: (l) => l.length >= 5,                                       currentVal: (l) => Math.min(l.length, 5),                                  total: 5    },
-  { id: "logs_20",       title: "Veterano del reciclaje", desc: "Registra 20 reciclajes",                bonus: 250, icon: Trophy,  check: (l) => l.length >= 20,                                      currentVal: (l) => Math.min(l.length, 20),                                 total: 20   },
-  { id: "kg_5",          title: "5 kg reciclados",      desc: "Recicla 5 kg en total",                   bonus: 75,  icon: Scale,   check: (_l, k) => k >= 5,                                          currentVal: (_l, k) => Math.min(k, 5),                                     total: 5    },
-  { id: "kg_10",         title: "10 kg reciclados",     desc: "Recicla 10 kg en total",                  bonus: 150, icon: Scale,   check: (_l, k) => k >= 10,                                         currentVal: (_l, k) => Math.min(k, 10),                                    total: 10   },
-  { id: "kg_50",         title: "50 kg reciclados",     desc: "Recicla 50 kg en total",                  bonus: 500, icon: Award,   check: (_l, k) => k >= 50,                                         currentVal: (_l, k) => Math.min(k, 50),                                    total: 50   },
-  { id: "streak_3",      title: "Racha de 3 días",      desc: "Mantén una racha de 3 días seguidos",     bonus: 100, icon: Flame,   check: (_l, _k, s) => s >= 3,                                      currentVal: (_l, _k, s) => Math.min(s, 3),                                 total: 3    },
-  { id: "streak_7",      title: "Racha de fuego",       desc: "Mantén una racha de 7 días seguidos",     bonus: 200, icon: Flame,   check: (_l, _k, s) => s >= 7,                                      currentVal: (_l, _k, s) => Math.min(s, 7),                                 total: 7    },
-  { id: "all_materials", title: "Reciclador completo",  desc: "Recicla todos los tipos de materiales",   bonus: 300, icon: Target,  check: (l) => new Set(l.map((x) => x.material)).size >= 5,         currentVal: (l) => Math.min(new Set(l.map((x) => x.material)).size, 5),   total: 5    },
-  { id: "electronics",   title: "E-Waste Warrior",      desc: "Recicla material electrónico",            bonus: 100, icon: Cpu,     check: (l) => l.some((x) => x.material === "electronico"),         currentVal: (l) => (l.some((x) => x.material === "electronico") ? 1 : 0), total: 1    },
-  { id: "pts_500",       title: "Eco-Campeón",          desc: "Acumula 500 puntos de reciclaje",         bonus: 150, icon: Star,    check: (_l, _k, _s, p) => p >= 500,                                currentVal: (_l, _k, _s, p) => Math.min(p, 500),                           total: 500  },
-  { id: "pts_2000",      title: "Gran Reciclador",      desc: "Acumula 2 000 puntos de reciclaje",       bonus: 500, icon: Zap,     check: (_l, _k, _s, p) => p >= 2000,                               currentVal: (_l, _k, _s, p) => Math.min(p, 2000),                          total: 2000 },
-];
-
-// ─── Tipos ────────────────────────────────────────────────────────────────────
-interface RecyclingLog {
-  id: string;
-  material: string;
-  quantity_kg: number;
-  location: string;
-  notes: string | null;
-  qr_code: string | null;
-  points_earned: number;
-  created_at: string;
-}
-
-// ─── Helpers de display ───────────────────────────────────────────────────────
-const formatDate = (iso: string) =>
-  new Date(iso).toLocaleDateString("es-CO", { day: "2-digit", month: "short", year: "numeric" });
-
-const materialLabel = (id: string) => MATERIALS.find((m) => m.id === id)?.name ?? id;
-const materialColor = (id: string) => MATERIALS.find((m) => m.id === id)?.color ?? "bg-muted";
+import { useAuth } from "@/contexts/AuthContext";
+import { MATERIALS, getMaterialLabel, getMaterialColor } from "@/constants/materials";
+import { MISSIONS } from "@/constants/missions";
+import { progressWidth } from "@/lib/progressWidth";
+import { formatDate } from "@/lib/formatDate";
+import { useRecyclingLogs } from "@/hooks/useRecyclingLogs";
+import { useMissions } from "@/hooks/useMissions";
 
 const MaterialIcon = ({ id, className }: { id: string; className?: string }) => {
   const mat = MATERIALS.find((m) => m.id === id);
@@ -98,67 +19,31 @@ const MaterialIcon = ({ id, className }: { id: string; className?: string }) => 
   return <Icon className={className} />;
 };
 
-// ─── Componente principal ─────────────────────────────────────────────────────
 const Dashboard = () => {
   const { user, profile, refreshProfile } = useAuth();
+  const { data: logs = [], isLoading: loadingLogs } = useRecyclingLogs(user?.id);
 
-  const [logs, setLogs]           = useState<RecyclingLog[]>([]);
-  const [loadingLogs, setLoadingLogs] = useState(true);
+  const { getAwardedIds } = useMissions({
+    userId: user?.id,
+    profile,
+    logs,
+    loadingLogs,
+    onAwarded: refreshProfile,
+  });
 
-  const awardedKey      = user ? `eco_awarded_${user.id}` : null;
-  const missionCheckDone = useRef(false);
+  const totalKg = profile?.total_kg ?? logs.reduce((s, l) => s + l.quantity_kg, 0);
+  const points  = profile?.points ?? 0;
+  const level   = points >= 2000 ? "Experto" : points >= 500 ? "Avanzado" : "Iniciante";
 
-  // ─── Cargar historial ────────────────────────────────────────────────────
-  const fetchLogs = useCallback(async () => {
-    if (!user) return;
-    setLoadingLogs(true);
-    const { data, error } = await supabase
-      .from("recycling_logs")
-      .select("*")
-      .eq("user_id", user.id)
-      .order("created_at", { ascending: false })
-      .limit(20);
-    if (!error && data) setLogs(data as RecyclingLog[]);
-    setLoadingLogs(false);
-  }, [user]);
+  const awardedIds = getAwardedIds();
+  const kg = Number(profile?.total_kg ?? 0);
+  const streak = profile?.streak ?? 0;
+  const completedCount = MISSIONS.filter(
+    (m) => awardedIds.includes(m.id) || m.check(logs, kg, streak, points)
+  ).length;
 
-  useEffect(() => { fetchLogs(); }, [fetchLogs]);
-
-  // ─── Lógica de misiones ──────────────────────────────────────────────────
-  useEffect(() => {
-    if (loadingLogs || !user || !profile || !awardedKey || missionCheckDone.current) return;
-    missionCheckDone.current = true;
-
-    const awarded: string[] = JSON.parse(localStorage.getItem(awardedKey) ?? "[]");
-    const totalKg = Number(profile.total_kg ?? 0);
-    const streak  = profile.streak ?? 0;
-    const points  = profile.points ?? 0;
-
-    const newlyCompleted = MISSIONS.filter(
-      (m) => !awarded.includes(m.id) && m.check(logs, totalKg, streak, points)
-    );
-    if (newlyCompleted.length === 0) return;
-
-    const totalBonus = newlyCompleted.reduce((s, m) => s + m.bonus, 0);
-    supabase
-      .from("profiles")
-      .update({ points: points + totalBonus })
-      .eq("user_id", user.id)
-      .then(({ error }) => {
-        if (error) return;
-        localStorage.setItem(awardedKey, JSON.stringify([...awarded, ...newlyCompleted.map((m) => m.id)]));
-        newlyCompleted.forEach((m) => toast.success(`🏅 Misión: "${m.title}" +${m.bonus} pts`));
-        refreshProfile();
-      });
-  }, [loadingLogs, logs, user, profile, awardedKey, refreshProfile]);
-
-  const totalLogs = logs.length;
-  const totalKg   = profile?.total_kg ?? logs.reduce((s, l) => s + l.quantity_kg, 0);
-
-  // ─── Render ──────────────────────────────────────────────────────────────
   return (
     <div className="min-h-screen bg-background">
-      {/* Topbar */}
       <header className="border-b border-border/50 bg-card/80 backdrop-blur-sm sticky top-0 z-40">
         <div className="container mx-auto px-4 py-3 flex items-center justify-between">
           <Link to="/" className="flex items-center gap-2">
@@ -189,7 +74,7 @@ const Dashboard = () => {
             </div>
             <div className="flex gap-4 sm:gap-6">
               <div className="text-center">
-                <div className="font-display text-2xl font-bold">{(profile?.points ?? 0).toLocaleString()}</div>
+                <div className="font-display text-2xl font-bold">{points.toLocaleString()}</div>
                 <div className="text-xs text-primary-foreground/70 flex items-center gap-1 justify-center">
                   <Star size={11} /> Puntos
                 </div>
@@ -205,9 +90,9 @@ const Dashboard = () => {
 
           <div className="grid grid-cols-3 gap-3 mt-5">
             {[
-              { icon: Scale,     label: "Kg reciclados", value: `${Number(totalKg).toFixed(1)} kg` },
-              { icon: Recycle,   label: "Registros",     value: totalLogs },
-              { icon: TrendingUp, label: "Nivel",        value: (profile?.points ?? 0) >= 2000 ? "Experto" : (profile?.points ?? 0) >= 500 ? "Avanzado" : "Iniciante" },
+              { icon: Scale,      label: "Kg reciclados", value: `${Number(totalKg).toFixed(1)} kg` },
+              { icon: Recycle,    label: "Registros",     value: logs.length },
+              { icon: TrendingUp, label: "Nivel",         value: level },
             ].map((s) => (
               <div key={s.label} className="bg-primary-foreground/10 rounded-2xl p-3 text-center">
                 <s.icon size={18} className="mx-auto mb-1 text-primary-foreground/80" />
@@ -217,7 +102,6 @@ const Dashboard = () => {
             ))}
           </div>
 
-          {/* CTA escanear QR */}
           <Link
             to="/reciclar"
             className="mt-4 flex items-center justify-center gap-2 w-full py-3 rounded-2xl bg-primary-foreground/20 hover:bg-primary-foreground/30 transition-colors font-semibold text-sm"
@@ -239,7 +123,7 @@ const Dashboard = () => {
           </div>
 
           {loadingLogs ? (
-            <div className="flex items-center justify-center h-32 text-muted-foreground">
+            <div className="flex items-center justify-center h-32">
               <Leaf size={24} className="animate-bounce text-primary" />
             </div>
           ) : logs.length === 0 ? (
@@ -252,15 +136,12 @@ const Dashboard = () => {
           ) : (
             <div className="space-y-2.5 max-h-96 overflow-y-auto pr-1">
               {logs.map((log) => (
-                <div
-                  key={log.id}
-                  className="flex items-center gap-3 p-3 rounded-2xl bg-muted/50 hover:bg-muted transition-colors"
-                >
-                  <div className={`w-10 h-10 rounded-xl ${materialColor(log.material)} flex items-center justify-center shrink-0`}>
+                <div key={log.id} className="flex items-center gap-3 p-3 rounded-2xl bg-muted/50 hover:bg-muted transition-colors">
+                  <div className={`w-10 h-10 rounded-xl ${getMaterialColor(log.material)} flex items-center justify-center shrink-0`}>
                     <MaterialIcon id={log.material} className="text-primary-foreground w-4 h-4" />
                   </div>
                   <div className="flex-1 min-w-0">
-                    <div className="font-medium text-sm">{materialLabel(log.material)}</div>
+                    <div className="font-medium text-sm">{getMaterialLabel(log.material)}</div>
                     <div className="text-xs text-muted-foreground flex flex-wrap items-center gap-x-2">
                       <span className="flex items-center gap-0.5"><Scale size={10} /> {log.quantity_kg} kg</span>
                       <span className="flex items-center gap-0.5"><MapPin size={10} /> {log.location}</span>
@@ -281,24 +162,14 @@ const Dashboard = () => {
           <h2 className="font-display text-lg font-bold mb-5 flex items-center gap-2">
             <Trophy size={18} className="text-primary" /> Misiones
             <span className="ml-auto text-xs font-normal text-muted-foreground">
-              {(() => {
-                const awarded: string[] = JSON.parse(localStorage.getItem(awardedKey ?? "") ?? "[]");
-                const kg = Number(profile?.total_kg ?? 0);
-                const s  = profile?.streak ?? 0;
-                const p  = profile?.points ?? 0;
-                const done = MISSIONS.filter((m) => awarded.includes(m.id) || m.check(logs, kg, s, p)).length;
-                return `${done} / ${MISSIONS.length} completadas`;
-              })()}
+              {completedCount} / {MISSIONS.length} completadas
             </span>
           </h2>
+
           <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
             {MISSIONS.map((m) => {
-              const awarded: string[] = JSON.parse(localStorage.getItem(awardedKey ?? "") ?? "[]");
-              const kg   = Number(profile?.total_kg ?? 0);
-              const s    = profile?.streak ?? 0;
-              const p    = profile?.points ?? 0;
-              const done = awarded.includes(m.id) || m.check(logs, kg, s, p);
-              const cur  = m.currentVal(logs, kg, s, p);
+              const done = awardedIds.includes(m.id) || m.check(logs, kg, streak, points);
+              const cur  = m.currentVal(logs, kg, streak, points);
               const pct  = Math.min((cur / m.total) * 100, 100);
               const Icon = m.icon;
               return (
@@ -314,10 +185,12 @@ const Dashboard = () => {
                       <div className="font-semibold text-sm truncate">{m.title}</div>
                       <div className="text-xs text-muted-foreground leading-tight">{m.desc}</div>
                     </div>
-                    <div className={`text-xs font-bold shrink-0 ${done ? "text-primary" : "text-muted-foreground"}`}>+{m.bonus}</div>
+                    <div className={`text-xs font-bold shrink-0 ${done ? "text-primary" : "text-muted-foreground"}`}>
+                      +{m.bonus}
+                    </div>
                   </div>
                   <div className="w-full h-2 bg-muted rounded-full overflow-hidden">
-                    <div className={`h-full bg-gradient-eco rounded-full transition-all duration-700 ${pctClass(Math.round(pct))}`} />
+                    <div className={`h-full bg-gradient-eco rounded-full transition-all duration-700 ${progressWidth(Math.round(pct))}`} />
                   </div>
                   <div className="flex justify-between text-[10px] text-muted-foreground mt-1">
                     <span>{done ? "✅ Completada" : `${cur % 1 === 0 ? cur : cur.toFixed(1)} / ${m.total}`}</span>

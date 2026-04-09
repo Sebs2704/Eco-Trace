@@ -1,16 +1,7 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { Trophy, Star, Flame, Medal, TrendingUp, Gift, Loader2 } from "lucide-react";
-import { supabase } from "@/integrations/supabase/client";
-
-const AVATARS = ["🌱", "🌿", "🍃", "♻️", "🌍", "🌎", "🌳", "🌲"];
-
-interface LeaderboardEntry {
-  rank: number;
-  name: string;
-  points: number;
-  avatar: string;
-  streak: number;
-}
+import { progressWidth } from "@/lib/progressWidth";
+import { useLeaderboard } from "@/hooks/useLeaderboard";
 
 const rewards = [
   { name: "Descuento 10% comercio local", points: 500,  icon: Gift },
@@ -20,67 +11,16 @@ const rewards = [
 ];
 
 const challenges = [
-  { title: "Recicla 5 botellas PET",      progress: 80, reward: 50 },
-  { title: "Registra 3 días seguidos",    progress: 66, reward: 100 },
-  { title: "Comparte con un amigo",       progress: 0,  reward: 75 },
+  { title: "Recicla 5 botellas PET",   progress: 80, reward: 50  },
+  { title: "Registra 3 días seguidos", progress: 66, reward: 100 },
+  { title: "Comparte con un amigo",    progress: 0,  reward: 75  },
 ];
 
-// Clases Tailwind para anchos de barra de progreso (evita inline styles dinámicos)
-const progressClass = (p: number) => {
-  if (p === 0)  return "w-0";
-  if (p <= 10)  return "w-[10%]";
-  if (p <= 20)  return "w-1/5";
-  if (p <= 25)  return "w-1/4";
-  if (p <= 33)  return "w-1/3";
-  if (p <= 40)  return "w-2/5";
-  if (p <= 50)  return "w-1/2";
-  if (p <= 60)  return "w-3/5";
-  if (p <= 66)  return "w-2/3";
-  if (p <= 75)  return "w-3/4";
-  if (p <= 80)  return "w-4/5";
-  if (p <= 90)  return "w-[90%]";
-  return "w-full";
-};
+type Tab = "ranking" | "recompensas" | "retos";
 
 const GamificationSection = () => {
-  const [tab, setTab] = useState<"ranking" | "recompensas" | "retos">("ranking");
-  const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([]);
-  const [loadingLb, setLoadingLb] = useState(true);
-
-  useEffect(() => {
-    const fetchLeaderboard = async () => {
-      setLoadingLb(true);
-      const { data, error } = await supabase
-        .from("profiles")
-        .select("full_name, points, streak")
-        .order("points", { ascending: false })
-        .limit(5);
-
-      if (!error && data && data.length > 0) {
-        setLeaderboard(
-          data.map((row, i) => ({
-            rank: i + 1,
-            name: row.full_name || "Reciclador",
-            points: row.points ?? 0,
-            avatar: AVATARS[i % AVATARS.length],
-            streak: (row as { streak?: number }).streak ?? 0,
-          }))
-        );
-      } else {
-        // Datos de muestra si aún no hay usuarios registrados
-        setLeaderboard([
-          { rank: 1, name: "María López",    points: 2850, avatar: "🌱", streak: 45 },
-          { rank: 2, name: "Carlos Ruiz",    points: 2340, avatar: "🌿", streak: 32 },
-          { rank: 3, name: "Ana García",     points: 2100, avatar: "🍃", streak: 28 },
-          { rank: 4, name: "Pedro Martínez", points: 1890, avatar: "♻️", streak: 21 },
-          { rank: 5, name: "Laura Díaz",     points: 1650, avatar: "🌍", streak: 15 },
-        ]);
-      }
-      setLoadingLb(false);
-    };
-
-    fetchLeaderboard();
-  }, []);
+  const [tab, setTab] = useState<Tab>("ranking");
+  const { data: leaderboard = [], isLoading: loadingLb } = useLeaderboard();
 
   return (
     <section id="gamificacion" className="py-24">
@@ -121,7 +61,7 @@ const GamificationSection = () => {
           {tab === "ranking" && (
             <div className="space-y-3 animate-slide-up">
               {loadingLb ? (
-                <div className="flex justify-center py-12 text-muted-foreground">
+                <div className="flex justify-center py-12">
                   <Loader2 size={28} className="animate-spin text-primary" />
                 </div>
               ) : (
@@ -194,7 +134,7 @@ const GamificationSection = () => {
                     <span className="text-sm text-primary font-medium">+{c.reward} pts</span>
                   </div>
                   <div className="w-full h-3 bg-muted rounded-full overflow-hidden">
-                    <div className={`h-full bg-gradient-eco rounded-full transition-all duration-1000 ${progressClass(c.progress)}`} />
+                    <div className={`h-full bg-gradient-eco rounded-full transition-all duration-1000 ${progressWidth(c.progress)}`} />
                   </div>
                   <div className="text-xs text-muted-foreground mt-1">{c.progress}% completado</div>
                 </div>

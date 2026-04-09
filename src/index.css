@@ -152,7 +152,16 @@
   100% { transform: translateY(110vh) rotate(720deg); opacity: 0; }
 }
 
-.animate-float { animation: float 3s ease-in-out infinite; }
+.animate-float     { animation: float    3s ease-in-out infinite; }
 .animate-pulse-eco { animation: pulse-eco 2s ease-in-out infinite; }
-.animate-slide-up { animation: slide-up 0.8s ease-out forwards; }
+.animate-slide-up  { animation: slide-up 0.8s ease-out forwards; }
 .animate-leaf-fall { animation: leaf-fall 8s linear infinite; }
+.animate-slide-up-delayed { animation: slide-up 0.8s ease-out 0.3s forwards; opacity: 0; }
+
+/* Hero leaf positions — avoids inline styles for static values */
+.leaf-0 { left: 10%; animation-delay: 0s;    font-size: 18px; }
+.leaf-1 { left: 25%; animation-delay: 1.3s;  font-size: 22px; }
+.leaf-2 { left: 40%; animation-delay: 2.6s;  font-size: 26px; }
+.leaf-3 { left: 55%; animation-delay: 3.9s;  font-size: 30px; }
+.leaf-4 { left: 70%; animation-delay: 5.2s;  font-size: 34px; }
+.leaf-5 { left: 85%; animation-delay: 6.5s;  font-size: 38px; }

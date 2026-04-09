@@ -1,0 +1,9 @@
+:{$PORT:80}
+
+root * /app/dist
+encode zstd gzip
+
+handle {
+	try_files {path} /index.html
+	file_server
+}

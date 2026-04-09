@@ -1,13 +1,9 @@
 import { createContext, useContext, useEffect, useState, ReactNode } from "react";
 import { User, Session } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
+import type { UserProfile } from "@/types";
 
-export interface UserProfile {
-  full_name: string;
-  points: number;
-  streak: number;
-  total_kg: number;
-}
+export type { UserProfile };
 
 interface AuthContextType {
   user: User | null;
@@ -30,7 +26,7 @@ const AuthContext = createContext<AuthContextType>({
 export const useAuth = () => useContext(AuthContext);
 
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
-  const [user, setUser] = useState<User | null>(null);
+  const [user, setUser]       = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
   const [profile, setProfile] = useState<UserProfile | null>(null);
@@ -41,12 +37,14 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       .select("full_name, points, streak, total_kg")
       .eq("user_id", userId)
       .single();
-    if (data) setProfile({
-      full_name: data.full_name,
-      points: data.points,
-      streak: data.streak ?? 0,
-      total_kg: data.total_kg ?? 0,
-    });
+    if (data) {
+      setProfile({
+        full_name: data.full_name,
+        points:    data.points,
+        streak:    data.streak   ?? 0,
+        total_kg:  data.total_kg ?? 0,
+      });
+    }
   };
 
   const refreshProfile = async () => {
@@ -54,18 +52,17 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   };
 
   useEffect(() => {
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      (_event, session) => {
-        setSession(session);
-        setUser(session?.user ?? null);
-        if (session?.user) {
-          setTimeout(() => fetchProfile(session.user.id), 0);
-        } else {
-          setProfile(null);
-        }
-        setLoading(false);
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setSession(session);
+      setUser(session?.user ?? null);
+      if (session?.user) {
+        // setTimeout avoids a Supabase deadlock on the first auth event
+        setTimeout(() => fetchProfile(session.user.id), 0);
+      } else {
+        setProfile(null);
       }
-    );
+      setLoading(false);
+    });
 
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);

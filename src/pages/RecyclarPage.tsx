@@ -1,58 +1,28 @@
 import { useState } from "react";
 import { useSearchParams, Link, useNavigate } from "react-router-dom";
-import { useAuth } from "@/contexts/AuthContext";
-import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import {
-  Recycle, MapPin, Star, CheckCircle2, LogIn,
-  Milk, Newspaper, Wine, Package, Cpu, QrCode, ArrowLeft,
+  Recycle, MapPin, Star, CheckCircle2, LogIn, QrCode, ArrowLeft,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import ecoLogo from "@/assets/eco-logo.png";
+import { useAuth } from "@/contexts/AuthContext";
+import { MATERIALS } from "@/constants/materials";
+import { getLocationName } from "@/constants/locations";
+import { calculatePoints } from "@/lib/calculatePoints";
+import { generateQrCode } from "@/lib/generateQrCode";
+import { recyclingService } from "@/services/recyclingService";
 
-// ─── Barrios / puntos de acopio disponibles ───────────────────────────────────
-// El QR de cada caneca lleva la URL: /reciclar?loc=CLAVE&id=NUMERO
-// Ejemplo: /reciclar?loc=jordan&id=001
-const LOCATIONS: Record<string, string> = {
-  jordan:          "Barrio Jordán",
-  barzal:          "Barrio Barzal",
-  esperanza:       "Barrio La Esperanza",
-  manzanares:      "Barrio Manzanares",
-  centro:          "Centro de Villavicencio",
-  porvenir:        "Barrio El Porvenir",
-  villa_lucia:     "Barrio Villa Lucía",
-  chapinero:       "Barrio Chapinero",
-  primero_mayo:    "Barrio Primero de Mayo",
-  el_buque:        "Barrio El Buque",
-  santa_helena:    "Barrio Santa Helena",
-  recuperarte:     "Asociación Recuperarte",
-  ecoambiente:     "Asociación Ecoambiente",
-  recinam:         "Recinam del Llano",
-  suaitana:        "Asociación La Suaitana",
-  asocanitas:      "ASOCANITAS",
-  arum:            "ARUM",
-};
-
-// ─── Materiales ───────────────────────────────────────────────────────────────
-const MATERIALS = [
-  { id: "plastico",    name: "Plástico",      icon: Milk,      color: "bg-eco-sky",   pts_per_kg: 20 },
-  { id: "papel",       name: "Papel / Cartón", icon: Newspaper, color: "bg-eco-warm",  pts_per_kg: 10 },
-  { id: "vidrio",      name: "Vidrio",         icon: Wine,      color: "bg-primary",   pts_per_kg: 15 },
-  { id: "metal",       name: "Metal",          icon: Package,   color: "bg-eco-earth", pts_per_kg: 25 },
-  { id: "electronico", name: "Electrónicos",   icon: Cpu,       color: "bg-accent",    pts_per_kg: 30 },
-];
-
-// ─── Componente ───────────────────────────────────────────────────────────────
 const RecyclarPage = () => {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const { user, refreshProfile } = useAuth();
 
-  const locKey      = searchParams.get("loc") ?? "";
-  const canecaId    = searchParams.get("id") ?? "";
-  const locationName = LOCATIONS[locKey] ?? (locKey ? locKey : "Villavicencio");
+  const locKey       = searchParams.get("loc") ?? "";
+  const canecaId     = searchParams.get("id")  ?? "";
+  const locationName = getLocationName(locKey);
 
   const [selectedMaterial, setSelectedMaterial] = useState(MATERIALS[0].id);
   const [quantityKg, setQuantityKg]             = useState("");
@@ -60,18 +30,16 @@ const RecyclarPage = () => {
   const [submitting, setSubmitting]             = useState(false);
   const [success, setSuccess]                   = useState<{ code: string; points: number } | null>(null);
 
-  const mat           = MATERIALS.find((m) => m.id === selectedMaterial)!;
   const kg            = parseFloat(quantityKg) || 0;
-  const previewPoints = Math.round(kg * mat.pts_per_kg);
+  const previewPoints = calculatePoints(selectedMaterial, kg);
 
-  // ─── Pantalla: no autenticado ────────────────────────────────────────────
+  // ── Pantalla: no autenticado ─────────────────────────────────────────────
   if (!user) {
     const returnUrl = encodeURIComponent(`/reciclar?${searchParams.toString()}`);
     return (
       <div className="min-h-screen bg-background flex flex-col items-center justify-center px-4 py-10">
         <img src={ecoLogo} alt="EcoVilla" className="h-16 w-16 mb-3" />
         <h1 className="font-display text-2xl font-bold mb-6 text-gradient-eco">EcoVilla</h1>
-
         <div className="w-full max-w-sm bg-card rounded-3xl border border-border/50 p-6 shadow-card-eco text-center">
           <div className="w-14 h-14 rounded-2xl bg-primary/10 flex items-center justify-center mx-auto mb-4">
             <QrCode size={26} className="text-primary" />
@@ -89,10 +57,7 @@ const RecyclarPage = () => {
               <LogIn size={18} /> Iniciar sesión
             </Button>
           </Link>
-          <Link
-            to={`/signup?next=${returnUrl}`}
-            className="block mt-3 text-sm text-primary hover:underline"
-          >
+          <Link to={`/signup?next=${returnUrl}`} className="block mt-3 text-sm text-primary hover:underline">
             ¿No tienes cuenta? Crear cuenta
           </Link>
         </div>
@@ -100,7 +65,7 @@ const RecyclarPage = () => {
     );
   }
 
-  // ─── Pantalla: éxito ─────────────────────────────────────────────────────
+  // ── Pantalla: éxito ──────────────────────────────────────────────────────
   if (success) {
     return (
       <div className="min-h-screen bg-background flex flex-col items-center justify-center px-4 py-10 text-center">
@@ -108,9 +73,7 @@ const RecyclarPage = () => {
           <CheckCircle2 size={40} className="text-primary-foreground" />
         </div>
         <h2 className="font-display text-2xl font-bold mb-1">¡Reciclaje registrado!</h2>
-        <p className="text-muted-foreground text-sm mb-6">
-          Tu contribución al medio ambiente quedó guardada.
-        </p>
+        <p className="text-muted-foreground text-sm mb-6">Tu contribución al medio ambiente quedó guardada.</p>
 
         <div className="w-full max-w-sm bg-card rounded-3xl border border-border/50 p-6 shadow-card-eco mb-6">
           <div className="flex items-center justify-center w-24 h-24 rounded-2xl border-2 border-dashed border-primary/40 bg-primary/5 mx-auto mb-4">
@@ -130,19 +93,11 @@ const RecyclarPage = () => {
             type="button"
             variant="outline"
             className="flex-1"
-            onClick={() => {
-              setSuccess(null);
-              setQuantityKg("");
-              setNotes("");
-            }}
+            onClick={() => { setSuccess(null); setQuantityKg(""); setNotes(""); }}
           >
             Otro registro
           </Button>
-          <Button
-            type="button"
-            className="flex-1 bg-gradient-eco"
-            onClick={() => navigate("/dashboard")}
-          >
+          <Button type="button" className="flex-1 bg-gradient-eco" onClick={() => navigate("/dashboard")}>
             Ver mi perfil
           </Button>
         </div>
@@ -150,39 +105,35 @@ const RecyclarPage = () => {
     );
   }
 
-  // ─── Formulario de registro ───────────────────────────────────────────────
+  // ── Formulario ───────────────────────────────────────────────────────────
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (kg <= 0) { toast.error("Ingresa una cantidad válida en kg"); return; }
     setSubmitting(true);
 
-    const qrCode = `VLL-${Date.now()}-${selectedMaterial.slice(0, 3).toUpperCase()}${canecaId ? `-${canecaId}` : ""}`;
+    const qrCode = generateQrCode(selectedMaterial, canecaId || undefined);
 
-    const { error } = await supabase.from("recycling_logs").insert({
-      user_id:      user.id,
-      material:     selectedMaterial,
-      quantity_kg:  kg,
-      location:     locationName,
-      notes:        notes.trim() || null,
-      qr_code:      qrCode,
-      points_earned: previewPoints,
-    });
-
-    setSubmitting(false);
-
-    if (error) {
+    try {
+      await recyclingService.insertLog({
+        user_id:       user.id,
+        material:      selectedMaterial,
+        quantity_kg:   kg,
+        location:      locationName,
+        notes:         notes.trim() || null,
+        qr_code:       qrCode,
+        points_earned: previewPoints,
+      });
+      setSuccess({ code: qrCode, points: previewPoints });
+      await refreshProfile();
+    } catch {
       toast.error("Error al guardar. Intenta de nuevo.");
-      console.error(error);
-      return;
+    } finally {
+      setSubmitting(false);
     }
-
-    setSuccess({ code: qrCode, points: previewPoints });
-    await refreshProfile();
   };
 
   return (
     <div className="min-h-screen bg-background">
-      {/* Header mobile */}
       <header className="sticky top-0 z-40 border-b border-border/50 bg-card/90 backdrop-blur-sm">
         <div className="flex items-center gap-3 px-4 py-3 max-w-lg mx-auto">
           <Link to="/dashboard" className="p-2 rounded-xl hover:bg-muted transition-colors">
@@ -194,8 +145,6 @@ const RecyclarPage = () => {
       </header>
 
       <main className="px-4 py-6 max-w-lg mx-auto">
-
-        {/* Ubicación estática del QR */}
         <div className="flex items-center gap-2 bg-primary/5 border border-primary/20 rounded-2xl px-4 py-3 mb-6">
           <MapPin size={18} className="text-primary shrink-0" />
           <div>
@@ -210,13 +159,11 @@ const RecyclarPage = () => {
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-6">
-
-          {/* Material */}
           <div>
             <Label className="text-base font-semibold mb-3 block">¿Qué vas a reciclar?</Label>
             <div className="grid grid-cols-5 gap-2">
               {MATERIALS.map((m) => {
-                const Icon = m.icon;
+                const Icon   = m.icon;
                 const active = selectedMaterial === m.id;
                 return (
                   <button
@@ -224,9 +171,7 @@ const RecyclarPage = () => {
                     type="button"
                     onClick={() => setSelectedMaterial(m.id)}
                     className={`flex flex-col items-center gap-1.5 p-2 sm:p-3 rounded-2xl border-2 transition-all active:scale-95 ${
-                      active
-                        ? "border-primary bg-primary/5 scale-105 shadow-eco"
-                        : "border-transparent bg-muted/60"
+                      active ? "border-primary bg-primary/5 scale-105 shadow-eco" : "border-transparent bg-muted/60"
                     }`}
                   >
                     <div className={`w-10 h-10 sm:w-12 sm:h-12 rounded-xl ${m.color} flex items-center justify-center`}>
@@ -240,7 +185,6 @@ const RecyclarPage = () => {
             </div>
           </div>
 
-          {/* Cantidad */}
           <div className="space-y-2">
             <Label htmlFor="quantity" className="text-base font-semibold">Cantidad (kg)</Label>
             <Input
@@ -261,9 +205,10 @@ const RecyclarPage = () => {
             )}
           </div>
 
-          {/* Notas */}
           <div className="space-y-2">
-            <Label htmlFor="notes" className="text-base font-semibold">Notas <span className="font-normal text-muted-foreground">(opcional)</span></Label>
+            <Label htmlFor="notes" className="text-base font-semibold">
+              Notas <span className="font-normal text-muted-foreground">(opcional)</span>
+            </Label>
             <Input
               id="notes"
               type="text"
